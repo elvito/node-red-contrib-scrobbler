@@ -101,8 +101,11 @@ function urlEncoded(params) {
 //  Last.fm API
 // ─────────────────────────────────────────────────────────────────
 function lastfmRequest(cfg, params, callback) {
-    // Build signature: sorted keys, no api_sig / format
-    const sig = Object.keys(params).sort()
+    // Signature: alle Params AUSSER api_sig/format, alphabetisch
+    const excluded = new Set(["api_sig", "format"]);
+    const sig = Object.keys(params)
+        .filter(k => !excluded.has(k))
+        .sort()
         .map(k => k + params[k])
         .join("") + cfg.apiSecret;
     params.api_sig = md5(sig);
@@ -254,15 +257,85 @@ module.exports = function (RED) {
             return;
         }
 
-        const lfmOk = node.cfg.lastfmEnabled && node.cfg.lastfmApiKey && node.cfg.lastfmSessionKey;
-        const lbzOk = node.cfg.lbzEnabled    && node.cfg.lbzToken;
+        // lbzEnabled kann als Boolean true oder String "true" ankommen
+        const toBool = v => v === true || v === "true" || v === 1;
+
+        const lfmOk = toBool(node.cfg.lastfmEnabled) && node.cfg.lastfmApiKey && node.cfg.lastfmSessionKey;
+        const lbzOk = toBool(node.cfg.lbzEnabled)    && node.cfg.lbzToken;
 
         if (!lfmOk && !lbzOk) {
             node.status({ fill: "yellow", shape: "ring", text: "kein Dienst aktiv" });
-            node.warn("Weder Last.fm noch ListenBrainz sind vollständig konfiguriert");
-        } else {
-            const services = [lfmOk && "Last.fm", lbzOk && "ListenBrainz"].filter(Boolean).join(" + ");
-            node.status({ fill: "grey", shape: "ring", text: services });
+            node.warn("Scrobbler: Weder Last.fm noch ListenBrainz sind vollständig konfiguriert.\n" +
+                      "  lbzEnabled=" + node.cfg.lbzEnabled + "  lbzToken=" + (node.cfg.lbzToken ? "(gesetzt)" : "(leer)") + "\n" +
+                      "  lfmEnabled=" + node.cfg.lastfmEnabled + "  lfmApiKey=" + (node.cfg.lastfmApiKey ? "(gesetzt)" : "(leer)"));
+            return;
+        }
+
+        // ── Startup: Token validieren ──────────────────────────────
+        node.status({ fill: "yellow", shape: "ring", text: "verbinde…" });
+
+        let validated = { lbz: !lbzOk, lfm: !lfmOk }; // pre-true if not needed
+        let errors    = [];
+
+        function onValidated() {
+            if (!validated.lbz || !validated.lfm) return; // noch ausstehend
+            if (errors.length) {
+                node.status({ fill: "red", shape: "dot", text: errors.join(", ") });
+                node.error("Scrobbler Verbindungsfehler: " + errors.join("; "));
+            } else {
+                const services = [lfmOk && "Last.fm", lbzOk && "ListenBrainz"].filter(Boolean).join(" + ");
+                node.status({ fill: "green", shape: "dot", text: "✓ " + services });
+            }
+        }
+
+        if (lbzOk) {
+            // ListenBrainz: GET /1/validate-token
+            httpRequest({
+                protocol: "https:",
+                hostname: "api.listenbrainz.org",
+                path:     "/1/validate-token",
+                method:   "GET",
+                headers:  {
+                    "Authorization": "Token " + node.cfg.lbzToken,
+                    "User-Agent":    "node-red-contrib-scrobbler/1.0"
+                }
+            }, null, (err, res, code) => {
+                if (err) {
+                    errors.push("ListenBrainz: " + err.message);
+                } else if (!res.valid) {
+                    errors.push("ListenBrainz: Token ungültig");
+                    node.error("ListenBrainz Token ungültig – bitte prüfen");
+                } else {
+                    node.log("ListenBrainz verbunden als: " + res.user_name);
+                }
+                validated.lbz = true;
+                onValidated();
+            });
+        }
+
+        if (lfmOk) {
+            // Last.fm: auth.getSessionInfo als leichtgewichtiger Check
+            lastfmRequest({
+                apiKey:     node.cfg.lastfmApiKey,
+                apiSecret:  node.cfg.lastfmApiSecret,
+                sessionKey: node.cfg.lastfmSessionKey
+            }, {
+                method:  "auth.getSessionInfo",
+                api_key: node.cfg.lastfmApiKey,
+                sk:      node.cfg.lastfmSessionKey
+            }, (err, res) => {
+                if (err) {
+                    errors.push("Last.fm: " + err.message);
+                } else if (res.error) {
+                    errors.push("Last.fm: " + res.message);
+                    node.error("Last.fm Fehler " + res.error + ": " + res.message);
+                } else {
+                    const user = res.session && res.session.name;
+                    node.log("Last.fm verbunden als: " + user);
+                }
+                validated.lfm = true;
+                onValidated();
+            });
         }
 
         // ── Helper ──────────────────────────────────────────────
