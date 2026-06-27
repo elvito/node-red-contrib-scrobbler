@@ -413,66 +413,100 @@ module.exports = function (RED) {
             }
         }
 
+        // ── Hilfsfunktion: ist dieser State ein "spielt gerade"? ──
+        // BluOS liefert: "play", "stream", "connecting" u.a.
+        // Stopp/Pause-States: "stop", "pause", ""
+        const STOP_STATES  = new Set(["stop", "pause", "stopped", "pausing"]);
+        const PLAY_STATES  = new Set(["play", "stream", "playing", "connecting", "loading"]);
+
         // ── Input handler ────────────────────────────────────────
         node.on("input", function (msg) {
             const data = msg.payload;
-            if (!data || typeof data !== "object") return;
+            if (!data || typeof data !== "object") {
+                node.log("Scrobbler: msg.payload ist kein Objekt, ignoriert (" + typeof data + ")");
+                return;
+            }
 
-            const state    = getField(data, node.fieldState) || "";
-            const artist   = getField(data, node.fieldArtist) || "";
-            const title    = getField(data, node.fieldTitle)  || "";
-            const album    = getField(data, node.fieldAlbum)  || "";
-            const totlen   = parseInt(getField(data, node.fieldDuration), 10) || 0;
-            const service  = getField(data, node.fieldService) || "";
+            const state   = String(getField(data, node.fieldState) || "").toLowerCase().trim();
+            const artist  = String(getField(data, node.fieldArtist) || "").trim();
+            const title   = String(getField(data, node.fieldTitle)  || "").trim();
+            const album   = String(getField(data, node.fieldAlbum)  || "").trim();
+            const totlen  = parseInt(getField(data, node.fieldDuration), 10) || 0;
+            const service = String(getField(data, node.fieldService) || "").trim();
+
+            node.log("Scrobbler Input: state='" + state + "' artist='" + artist +
+                     "' title='" + title + "' totlen=" + totlen);
 
             // ── Stop / Pause → Timer abbrechen ───────────────
-            if (state === "stop" || state === "pause" || state === "") {
+            if (STOP_STATES.has(state) || state === "") {
                 cancelTimer();
                 node.status({ fill: "grey", shape: "ring", text: state || "idle" });
                 return;
             }
 
-            // ── Playing but no usable track info ────────────
-            if (state !== "play" || !artist || !title) return;
+            // ── Unbekannter State → loggen aber nicht ignorieren ──
+            if (!PLAY_STATES.has(state)) {
+                node.log("Scrobbler: unbekannter state='" + state + "' – wird als 'play' behandelt");
+            }
 
-            const track = { artist, title, album, duration: totlen || undefined, service,
-                            timestamp: Math.floor(Date.now() / 1000) };
+            // ── Kein Titelname → ignorieren ──────────────────
+            if (!title) {
+                node.log("Scrobbler: kein Titel in msg.payload." + node.fieldTitle + ", ignoriert");
+                node.status({ fill: "grey", shape: "ring", text: "kein Titel" });
+                return;
+            }
 
-            // ── Same track still playing → ignore ────────────
-            const isNew = !lastTrack
-                || lastTrack.artist !== artist
-                || lastTrack.title  !== title;
+            // artist kann leer sein (z.B. Internetradio) → title allein reicht
+            const trackKey = (artist || "") + "|||" + title;
 
-            if (!isNew) return;
+            const track = {
+                artist:    artist || "Unbekannt",
+                title,
+                album,
+                duration:  totlen || undefined,
+                service,
+                timestamp: Math.floor(Date.now() / 1000)
+            };
 
-            // ── New track ────────────────────────────────────
-            cancelTimer(); // cancel previous pending scrobble
+            // ── Derselbe Titel → ignorieren ──────────────────
+            const lastKey = lastTrack ? (lastTrack.artist + "|||" + lastTrack.title) : null;
+            if (lastKey === trackKey) {
+                node.log("Scrobbler: gleicher Track, ignoriert");
+                return;
+            }
 
-            // Skip tracks shorter than 30s (Last.fm rule)
+            // ── Neuer Track ──────────────────────────────────
+            cancelTimer();
+            node.log("Scrobbler: neuer Track erkannt: " + statusLabel(track));
+
+            // Tracks kürzer als 30s nicht scrobbeln (Last.fm-Regel)
             if (totlen > 0 && totlen < 30) {
-                node.log("Track zu kurz zum Scrobbeln (<30s): " + statusLabel(track));
+                node.warn("Scrobbler: Track zu kurz (<30s), kein Scrobble: " + statusLabel(track));
                 lastTrack = track;
+                node.status({ fill: "grey", shape: "ring", text: "zu kurz: " + statusLabel(track) });
                 return;
             }
 
             lastTrack = track;
             node.status({ fill: "blue", shape: "dot", text: "▶ " + statusLabel(track) });
 
-            // Now Playing sofort
+            // Now Playing sofort melden
             doNowPlaying(track);
 
-            // Scrobble nach konfigurierten Sekunden
-            // (Last.fm: frühestens nach 30s ODER 50% der Titellänge, max 4 Min)
-            let delay = node.scrobbleAfter * 1000;
-            if (totlen > 0) {
+            // Scrobble-Delay berechnen:
+            // min(50% Titellänge, 4 Minuten), mindestens 30 Sekunden
+            let delay = node.scrobbleAfter * 1000; // Standardwert
+            if (totlen >= 60) {
                 const halfLen = Math.floor(totlen / 2) * 1000;
                 const fourMin = 4 * 60 * 1000;
-                delay = Math.min(halfLen, fourMin, delay < halfLen ? delay : halfLen);
-                delay = Math.max(delay, 30 * 1000); // mindestens 30s
+                delay = Math.max(30000, Math.min(halfLen, fourMin));
             }
+
+            node.log("Scrobbler: Scrobble in " + (delay/1000) + "s geplant für: " + statusLabel(track));
 
             pendingTimer = setTimeout(() => {
                 pendingTimer = null;
+                node.log("Scrobbler: sende Scrobble für: " + statusLabel(track));
                 doScrobble(track);
             }, delay);
         });
