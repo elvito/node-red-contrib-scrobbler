@@ -276,21 +276,23 @@ module.exports = function (RED) {
   function ScrobblerConfigNode(config) {
     RED.nodes.createNode(this, config);
     // Last.fm
-    // Credentials in Node-RED müssen über this.credentials gelesen werden, nicht config!
+    // Credentials via this.credentials (nicht config!) lesen
     this.lastfmApiKey     = (this.credentials && this.credentials.lastfmApiKey)     || '';
     this.lastfmApiSecret  = (this.credentials && this.credentials.lastfmApiSecret)  || '';
     this.lastfmSessionKey = (this.credentials && this.credentials.lastfmSessionKey) || '';
-    this.lastfmEnabled    = !!(this.lastfmApiKey && this.lastfmApiSecret && this.lastfmSessionKey);
-    // ListenBrainz
-    this.lbToken   = (this.credentials && this.credentials.lbToken) || '';
-    this.lbEnabled = !!this.lbToken;
+    // lastfmEnabled + lbzEnabled kommen als defaults (nicht credentials) → via config
+    this.lastfmEnabled = (config.lastfmEnabled === true || config.lastfmEnabled === 'true')
+                         && !!(this.lastfmApiKey && this.lastfmApiSecret && this.lastfmSessionKey);
+    // ListenBrainz: Feld heißt im HTML lbzToken (mit z!)
+    this.lbToken   = (this.credentials && this.credentials.lbzToken) || '';
+    this.lbEnabled = (config.lbzEnabled === true || config.lbzEnabled === 'true') && !!this.lbToken;
   }
   RED.nodes.registerType('scrobbler-config', ScrobblerConfigNode, {
     credentials: {
       lastfmApiKey:     { type: 'password' },
       lastfmApiSecret:  { type: 'password' },
       lastfmSessionKey: { type: 'password' },
-      lbToken:          { type: 'password' },
+      lbzToken:         { type: 'password' },  // muss exakt dem HTML-Feldnamen entsprechen
     },
   });
 
@@ -317,7 +319,7 @@ module.exports = function (RED) {
       service:  config.fieldService  || 'service',
     };
 
-    const scrobbleDelay = (parseInt(config.scrobbleDelay, 10) || 30) * 1000; // ms
+    const scrobbleDelay = (parseInt(config.scrobbleAfter,  10) || 30) * 1000; // ms (Feldname im HTML: scrobbleAfter)
     const MIN_DURATION  = 30; // Tracks kürzer als 30s werden nicht gescrobbelt (Last.fm-Regel)
 
     let currentTrack   = null;
