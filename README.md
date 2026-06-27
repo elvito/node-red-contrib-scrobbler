@@ -5,6 +5,8 @@ Funktioniert direkt mit `node-red-contrib-bluesound` und jeder anderen Quelle.
 
 Keine externen Abhängigkeiten — kein `npm install` nötig außer dem Paket selbst.
 
+Diese Software wurde per KI generiert, daher keine Garantie, dass sie dauerhaft funktionieren wird.
+
 ## Installation
 
 ```bash
