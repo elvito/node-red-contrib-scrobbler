@@ -1,0 +1,16 @@
+{
+  "name": "node-red-contrib-scrobbler",
+  "version": "1.0.0",
+  "description": "Node-RED node for scrobbling to Last.fm and ListenBrainz. Works with node-red-contrib-bluesound and any other source.",
+  "keywords": ["node-red", "lastfm", "listenbrainz", "scrobble", "scrobbler", "music", "bluesound"],
+  "author": "elvito",
+  "license": "MIT",
+  "node-red": {
+    "nodes": {
+      "scrobbler": "scrobbler.js"
+    }
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
