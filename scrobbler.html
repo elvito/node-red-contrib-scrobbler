@@ -121,7 +121,7 @@ RED.nodes.registerType("scrobbler", {
         config:        { value: "", type: "scrobbler-config", required: true },
         scrobbleAfter: { value: 30, validate: RED.validators.number() },
         fieldArtist:   { value: "artist" },
-        fieldTitle:    { value: "title" },
+        fieldTitle:    { value: "name" },
         fieldAlbum:    { value: "album" },
         fieldState:    { value: "state" },
         fieldDuration: { value: "totlen" },
@@ -178,7 +178,7 @@ RED.nodes.registerType("scrobbler", {
         </div>
         <div class="form-row" style="margin-bottom:5px">
             <label style="width:120px" for="node-input-fieldTitle">Titel-Feld</label>
-            <input type="text" id="node-input-fieldTitle" style="width:160px" placeholder="title" />
+            <input type="text" id="node-input-fieldTitle" style="width:160px" placeholder="name" />
         </div>
         <div class="form-row" style="margin-bottom:5px">
             <label style="width:120px" for="node-input-fieldAlbum">Album-Feld</label>
@@ -207,7 +207,7 @@ RED.nodes.registerType("scrobbler", {
     <pre>{
   state:  "play",
   artist: "Radiohead",
-  title:  "Creep",
+  name:  "Creep",
   album:  "Pablo Honey",
   totlen: "238",
   service: "Tidal"
