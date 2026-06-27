@@ -1,0 +1,284 @@
+<!-- ══════════════════════════════════════════════════════════
+     CONFIG NODE: scrobbler-config
+     ══════════════════════════════════════════════════════════ -->
+<script type="text/javascript">
+RED.nodes.registerType("scrobbler-config", {
+    category: "config",
+    defaults: {
+        name:           { value: "" },
+        lastfmEnabled:  { value: false },
+        lbzEnabled:     { value: false }
+    },
+    credentials: {
+        lastfmApiKey:     { type: "password" },
+        lastfmApiSecret:  { type: "password" },
+        lastfmSessionKey: { type: "password" },
+        lbzToken:         { type: "password" }
+    },
+    label: function () {
+        const parts = [];
+        if (this.lastfmEnabled)  parts.push("Last.fm");
+        if (this.lbzEnabled)     parts.push("ListenBrainz");
+        return this.name || (parts.length ? parts.join(" + ") : "Scrobbler-Profil");
+    },
+    oneditprepare: function () {
+        function toggleSection(checkbox, section) {
+            $(checkbox).on("change", function () {
+                $(section).toggle(this.checked);
+            }).trigger("change");
+        }
+        toggleSection("#node-config-input-lastfmEnabled", "#lastfm-section");
+        toggleSection("#node-config-input-lbzEnabled",    "#lbz-section");
+    }
+});
+</script>
+
+<script type="text/html" data-template-name="scrobbler-config">
+    <div class="form-row">
+        <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-config-input-name" placeholder="Mein Scrobbler" />
+    </div>
+
+    <hr />
+    <h3 style="margin:10px 0 8px; font-size:14px;">
+        <img src="https://www.last.fm/static/images/lastfm_avatar_twitter.52a5d69a3753.png"
+             style="height:18px;vertical-align:middle;margin-right:6px;" />
+        Last.fm
+    </h3>
+    <div class="form-row">
+        <label for="node-config-input-lastfmEnabled"><i class="fa fa-toggle-on"></i> Aktiviert</label>
+        <input type="checkbox" id="node-config-input-lastfmEnabled" style="width:auto;margin-left:0" />
+    </div>
+    <div id="lastfm-section">
+        <div class="form-row">
+            <label for="node-config-input-lastfmApiKey"><i class="fa fa-key"></i> API Key</label>
+            <input type="password" id="node-config-input-lastfmApiKey" placeholder="32-stelliger API Key von last.fm/api" />
+        </div>
+        <div class="form-row">
+            <label for="node-config-input-lastfmApiSecret"><i class="fa fa-lock"></i> API Secret</label>
+            <input type="password" id="node-config-input-lastfmApiSecret" placeholder="API Secret" />
+        </div>
+        <div class="form-row">
+            <label for="node-config-input-lastfmSessionKey"><i class="fa fa-ticket"></i> Session Key</label>
+            <input type="password" id="node-config-input-lastfmSessionKey"
+                   placeholder="Einmalig per 'Last.fm Auth' Node holen" />
+        </div>
+        <div class="form-tips">
+            API Key + Secret: <a href="https://www.last.fm/api/account/create" target="_blank">last.fm/api/account/create</a><br/>
+            Session Key: einmalig über den <b>Last.fm Auth</b> Node holen (siehe Palette).
+        </div>
+    </div>
+
+    <hr />
+    <h3 style="margin:10px 0 8px; font-size:14px;">
+        🎵 ListenBrainz
+    </h3>
+    <div class="form-row">
+        <label for="node-config-input-lbzEnabled"><i class="fa fa-toggle-on"></i> Aktiviert</label>
+        <input type="checkbox" id="node-config-input-lbzEnabled" style="width:auto;margin-left:0" />
+    </div>
+    <div id="lbz-section">
+        <div class="form-row">
+            <label for="node-config-input-lbzToken"><i class="fa fa-key"></i> User Token</label>
+            <input type="password" id="node-config-input-lbzToken"
+                   placeholder="Token aus listenbrainz.org/profile" />
+        </div>
+        <div class="form-tips">
+            Token: <a href="https://listenbrainz.org/profile/" target="_blank">listenbrainz.org/profile</a>
+            → "User Token" Abschnitt
+        </div>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="scrobbler-config">
+    <p>Zugangsdaten für Last.fm und/oder ListenBrainz.</p>
+    <p>Beide Dienste können gleichzeitig aktiv sein. Jeder kann unabhängig aktiviert/deaktiviert werden.</p>
+    <h3>Last.fm Session Key</h3>
+    <p>Der Session Key muss einmalig über den <b>Last.fm Auth</b> Node abgerufen werden.
+    Er verfällt nicht und muss nur einmal eingetragen werden.</p>
+    <h3>ListenBrainz Token</h3>
+    <p>Den Token findest du unter <a href="https://listenbrainz.org/profile/">listenbrainz.org/profile</a>.</p>
+</script>
+
+<!-- ══════════════════════════════════════════════════════════
+     MAIN NODE: scrobbler
+     ══════════════════════════════════════════════════════════ -->
+<script type="text/javascript">
+RED.nodes.registerType("scrobbler", {
+    category: "music",
+    color: "#c0392b",
+    defaults: {
+        name:          { value: "" },
+        config:        { value: "", type: "scrobbler-config", required: true },
+        scrobbleAfter: { value: 30, validate: RED.validators.number() },
+        fieldArtist:   { value: "artist" },
+        fieldTitle:    { value: "title" },
+        fieldAlbum:    { value: "album" },
+        fieldState:    { value: "state" },
+        fieldDuration: { value: "totlen" },
+        fieldService:  { value: "service" }
+    },
+    inputs:  1,
+    outputs: 1,
+    icon:    "music.png",
+    paletteLabel: "Scrobbler",
+    label: function () {
+        return this.name || "Scrobbler";
+    },
+    oneditprepare: function () {
+        // Toggle advanced field mapping
+        $("#toggle-fieldmap").on("click", function () {
+            $("#fieldmap-section").toggle();
+            $(this).text($("#fieldmap-section").is(":visible") ? "▲ Feld-Mapping verbergen" : "▼ Feld-Mapping anpassen");
+        });
+    }
+});
+</script>
+
+<script type="text/html" data-template-name="scrobbler">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Scrobbler" />
+    </div>
+    <div class="form-row">
+        <label for="node-input-config"><i class="fa fa-user"></i> Profil</label>
+        <input type="text" id="node-input-config" />
+    </div>
+    <div class="form-row">
+        <label for="node-input-scrobbleAfter"><i class="fa fa-clock-o"></i> Scrobble nach</label>
+        <input type="number" id="node-input-scrobbleAfter" min="10" max="240" style="width:80px" />
+        <span> Sekunden (mindestens 30, Last.fm-Regel)</span>
+    </div>
+
+    <div style="margin: 12px 0 4px;">
+        <a href="#" id="toggle-fieldmap" style="font-size:12px;color:#aaa;">▼ Feld-Mapping anpassen</a>
+    </div>
+    <div id="fieldmap-section" style="display:none; background:#f9f9f9; padding:10px; border-radius:4px;">
+        <p style="font-size:12px;color:#777;margin:0 0 8px;">
+            Standardmäßig passend für <b>bluesound-status</b> Node.
+            Ändere die Feldnamen wenn du eine andere Quelle verwendest.
+        </p>
+        <div class="form-row" style="margin-bottom:5px">
+            <label style="width:120px" for="node-input-fieldState">State-Feld</label>
+            <input type="text" id="node-input-fieldState" style="width:160px" placeholder="state" />
+            <span style="color:#888;font-size:11px"> (play / pause / stop)</span>
+        </div>
+        <div class="form-row" style="margin-bottom:5px">
+            <label style="width:120px" for="node-input-fieldArtist">Artist-Feld</label>
+            <input type="text" id="node-input-fieldArtist" style="width:160px" placeholder="artist" />
+        </div>
+        <div class="form-row" style="margin-bottom:5px">
+            <label style="width:120px" for="node-input-fieldTitle">Titel-Feld</label>
+            <input type="text" id="node-input-fieldTitle" style="width:160px" placeholder="title" />
+        </div>
+        <div class="form-row" style="margin-bottom:5px">
+            <label style="width:120px" for="node-input-fieldAlbum">Album-Feld</label>
+            <input type="text" id="node-input-fieldAlbum" style="width:160px" placeholder="album" />
+        </div>
+        <div class="form-row" style="margin-bottom:5px">
+            <label style="width:120px" for="node-input-fieldDuration">Länge-Feld</label>
+            <input type="text" id="node-input-fieldDuration" style="width:160px" placeholder="totlen" />
+            <span style="color:#888;font-size:11px"> (Sekunden)</span>
+        </div>
+        <div class="form-row" style="margin-bottom:5px">
+            <label style="width:120px" for="node-input-fieldService">Service-Feld</label>
+            <input type="text" id="node-input-fieldService" style="width:160px" placeholder="service" />
+        </div>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="scrobbler">
+    <p>Sendet Wiedergabe-Informationen an <b>Last.fm</b> und/oder <b>ListenBrainz</b>.</p>
+    <p>Verbinde diesen Node direkt mit dem Ausgang eines <b>bluesound-status</b> Nodes.
+    Der Scrobbler erkennt Titelwechsel selbst und handhabt Timing und Duplikate.</p>
+
+    <h3>Eingabe</h3>
+    <p><code>msg.payload</code> muss ein Objekt mit Wiedergabeinformationen sein, z.B. von
+    <code>bluesound-status</code>:</p>
+    <pre>{
+  state:  "play",
+  artist: "Radiohead",
+  title:  "Creep",
+  album:  "Pablo Honey",
+  totlen: "238",
+  service: "Tidal"
+}</pre>
+
+    <h3>Verhalten</h3>
+    <ul>
+        <li><b>Now Playing</b> wird sofort gemeldet wenn ein neuer Titel startet</li>
+        <li><b>Scrobble</b> wird nach dem konfigurierten Delay gesendet (Last.fm-Regel: frühestens 30s oder 50% der Titellänge)</li>
+        <li>Bei Pause/Stop wird ein ausstehender Scrobble-Timer abgebrochen</li>
+        <li>Tracks kürzer als 30 Sekunden werden nicht gescrobbelt</li>
+        <li>Doppelte Updates (gleicher Titel) werden ignoriert</li>
+    </ul>
+
+    <h3>Ausgabe</h3>
+    <dl class="message-properties">
+        <dt>msg.topic <span class="property-type">string</span></dt>
+        <dd><code>"nowplaying"</code> oder <code>"scrobble"</code></dd>
+        <dt>msg.service <span class="property-type">string</span></dt>
+        <dd><code>"lastfm"</code> oder <code>"listenbrainz"</code></dd>
+        <dt>msg.payload.ok <span class="property-type">boolean</span></dt>
+        <dd>Ob die API-Anfrage erfolgreich war</dd>
+        <dt>msg.payload.track <span class="property-type">object</span></dt>
+        <dd>Gesendete Track-Informationen</dd>
+    </dl>
+</script>
+
+<!-- ══════════════════════════════════════════════════════════
+     AUTH NODE: scrobbler-lastfm-auth
+     ══════════════════════════════════════════════════════════ -->
+<script type="text/javascript">
+RED.nodes.registerType("scrobbler-lastfm-auth", {
+    category: "music",
+    color:    "#d32121",
+    defaults: { name: { value: "" } },
+    inputs:   1,
+    outputs:  1,
+    icon:     "music.png",
+    paletteLabel: "Last.fm Auth",
+    label: function () { return this.name || "Last.fm Auth"; }
+});
+</script>
+
+<script type="text/html" data-template-name="scrobbler-lastfm-auth">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Last.fm Auth" />
+    </div>
+    <div class="form-tips">
+        <b>Einmaliger Setup – 2 Schritte:</b><br/>
+        <b>Schritt 1:</b> Inject-Node mit <code>{ step:1, apiKey:"...", apiSecret:"..." }</code> schicken<br/>
+        → Der Node gibt eine <code>authUrl</code> zurück → im Browser öffnen + bestätigen<br/>
+        <b>Schritt 2:</b> Inject-Node mit <code>{ step:2 }</code> schicken<br/>
+        → Der Node gibt den <code>sessionKey</code> zurück → ins Scrobbler-Profil eintragen
+    </div>
+</script>
+
+<script type="text/html" data-help-name="scrobbler-lastfm-auth">
+    <p>Einmalige Authentifizierung bei Last.fm um einen Session Key zu erhalten.</p>
+    <p>Der Session Key ist dauerhaft gültig und muss nur einmal abgerufen werden.</p>
+
+    <h3>Schritt 1 – Token + Auth-URL holen</h3>
+    <p>Schicke folgende Nachricht an diesen Node:</p>
+    <pre>{ step: 1, apiKey: "dein-api-key", apiSecret: "dein-api-secret" }</pre>
+    <p>Der Node antwortet mit einer <code>authUrl</code>. Öffne diese URL im Browser
+    und bestätige die App-Autorisierung.</p>
+
+    <h3>Schritt 2 – Session Key abrufen</h3>
+    <p>Nach der Browser-Bestätigung schicke:</p>
+    <pre>{ step: 2 }</pre>
+    <p>Der Node antwortet mit dem <code>sessionKey</code>. Diesen Wert in das
+    <b>Scrobbler-Profil</b> (Config-Node) eintragen.</p>
+
+    <h3>Ausgabe</h3>
+    <dl class="message-properties">
+        <dt>msg.payload.authUrl <span class="property-type">string</span></dt>
+        <dd>(Schritt 1) Im Browser öffnen und bestätigen</dd>
+        <dt>msg.payload.sessionKey <span class="property-type">string</span></dt>
+        <dd>(Schritt 2) In das Scrobbler-Profil eintragen</dd>
+        <dt>msg.payload.username <span class="property-type">string</span></dt>
+        <dd>(Schritt 2) Last.fm Benutzername zur Bestätigung</dd>
+    </dl>
+</script>
