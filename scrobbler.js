@@ -276,12 +276,13 @@ module.exports = function (RED) {
   function ScrobblerConfigNode(config) {
     RED.nodes.createNode(this, config);
     // Last.fm
-    this.lastfmApiKey    = config.lastfmApiKey    || '';
-    this.lastfmApiSecret = config.lastfmApiSecret || '';
-    this.lastfmSessionKey = config.lastfmSessionKey || '';
-    this.lastfmEnabled   = !!(this.lastfmApiKey && this.lastfmApiSecret && this.lastfmSessionKey);
+    // Credentials in Node-RED müssen über this.credentials gelesen werden, nicht config!
+    this.lastfmApiKey     = (this.credentials && this.credentials.lastfmApiKey)     || '';
+    this.lastfmApiSecret  = (this.credentials && this.credentials.lastfmApiSecret)  || '';
+    this.lastfmSessionKey = (this.credentials && this.credentials.lastfmSessionKey) || '';
+    this.lastfmEnabled    = !!(this.lastfmApiKey && this.lastfmApiSecret && this.lastfmSessionKey);
     // ListenBrainz
-    this.lbToken   = config.lbToken   || '';
+    this.lbToken   = (this.credentials && this.credentials.lbToken) || '';
     this.lbEnabled = !!this.lbToken;
   }
   RED.nodes.registerType('scrobbler-config', ScrobblerConfigNode, {
