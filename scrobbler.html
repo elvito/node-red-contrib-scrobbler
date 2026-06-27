@@ -6,8 +6,8 @@ RED.nodes.registerType("scrobbler-config", {
     category: "config",
     defaults: {
         name:           { value: "" },
-        lastfmEnabled:  { value: false },
-        lbzEnabled:     { value: false }
+        lastfmEnabled:  { value: "false" },
+        lbzEnabled:     { value: "false" }
     },
     credentials: {
         lastfmApiKey:     { type: "password" },
@@ -22,13 +22,22 @@ RED.nodes.registerType("scrobbler-config", {
         return this.name || (parts.length ? parts.join(" + ") : "Scrobbler-Profil");
     },
     oneditprepare: function () {
-        function toggleSection(checkbox, section) {
-            $(checkbox).on("change", function () {
-                $(section).toggle(this.checked);
-            }).trigger("change");
+        // Checkboxen: Wert ist String "true"/"false", nicht Boolean
+        function initCheckbox(inputId, sectionId, currentVal) {
+            const $cb = $(inputId);
+            $cb.prop("checked", currentVal === true || currentVal === "true");
+            $cb.on("change", function () {
+                $(sectionId).toggle(this.checked);
+            });
+            $(sectionId).toggle($cb.prop("checked"));
         }
-        toggleSection("#node-config-input-lastfmEnabled", "#lastfm-section");
-        toggleSection("#node-config-input-lbzEnabled",    "#lbz-section");
+        initCheckbox("#node-config-input-lastfmEnabled", "#lastfm-section", this.lastfmEnabled);
+        initCheckbox("#node-config-input-lbzEnabled",    "#lbz-section",    this.lbzEnabled);
+    },
+    oneditsave: function () {
+        // Checkbox-Werte explizit als String speichern
+        this.lastfmEnabled = $("#node-config-input-lastfmEnabled").prop("checked") ? "true" : "false";
+        this.lbzEnabled    = $("#node-config-input-lbzEnabled").prop("checked")    ? "true" : "false";
     }
 });
 </script>
