@@ -15,6 +15,12 @@ npm install elvito/node-red-contrib-scrobbler
 # Node-RED neu starten
 ```
 
+## Deinstallation
+
+```bash
+cd ~/.node-red && npm remove node-red-contrib-scrobbler
+```
+
 ## Enthaltene Nodes
 
 ### scrobbler-config (Config)
