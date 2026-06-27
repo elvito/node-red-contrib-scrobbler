@@ -95,11 +95,31 @@ function httpGet(urlStr) {
 const LASTFM_API_URL = 'https://ws.audioscrobbler.com/2.0/';
 
 /**
- * Schritt 1 des Last.fm Web Auth Flow: Auth-URL zurückgeben.
- * Der Nutzer muss diese URL im Browser öffnen und die App autorisieren.
+ * Schritt 1a: Token von Last.fm holen (auth.getToken).
+ * Dieser Token wird in die Auth-URL eingebettet und in Schritt 2 wiederverwendet.
  */
-function lastFmGetAuthUrl(apiKey) {
-  return `https://www.last.fm/api/auth/?api_key=${apiKey}`;
+async function lastFmGetToken(apiKey, apiSecret) {
+  const params = {
+    method:  'auth.getToken',
+    api_key: apiKey,
+  };
+  params.api_sig = signLastFm(params, apiSecret);
+  params.format  = 'json';
+
+  const raw  = await httpPost(LASTFM_API_URL, params);
+  const json = JSON.parse(raw);
+
+  if (json.error) {
+    throw new Error(`Last.fm auth.getToken Fehler ${json.error}: ${json.message}`);
+  }
+  return json.token; // ~60 Minuten gültig nach Autorisierung durch den Nutzer
+}
+
+/**
+ * Schritt 1b: Auth-URL mit Token bauen.
+ */
+function lastFmBuildAuthUrl(apiKey, token) {
+  return `https://www.last.fm/api/auth/?api_key=${apiKey}&token=${token}`;
 }
 
 /**
@@ -477,34 +497,52 @@ module.exports = function (RED) {
     RED.nodes.createNode(this, config);
     const node = this;
 
-    // Temporärer Speicher für API-Key/Secret zwischen Schritt 1 und 2
+    // Temporärer Speicher zwischen Schritt 1 und 2
     let tempApiKey    = '';
     let tempApiSecret = '';
+    let tempToken     = '';   // von auth.getToken, wird in Schritt 2 wiederverwendet
 
     node.on('input', async function (msg) {
-      const payload = msg.payload || {};
-      const step    = payload.step;
+      // step kann auf mehrere Arten reinkommen:
+      //   { step: 1, apiKey: "...", apiSecret: "..." }  ← Objekt in payload
+      //   msg.payload = 1                               ← direkte Zahl (Inject-Default)
+      //   msg.topic = "1"                               ← über Topic
+      const payload = (msg.payload && typeof msg.payload === 'object') ? msg.payload : {};
+      const step = parseInt(
+        payload.step ?? msg.payload ?? msg.topic ?? '',
+        10
+      );
+
+      // apiKey/apiSecret aus payload-Objekt ODER direkt auf msg-Ebene
+      const apiKey    = payload.apiKey    || msg.apiKey    || config.apiKey    || '';
+      const apiSecret = payload.apiSecret || msg.apiSecret || config.apiSecret || '';
 
       if (step === 1) {
-        // Schritt 1: Auth-URL ausgeben
-        tempApiKey    = payload.apiKey    || config.apiKey    || '';
-        tempApiSecret = payload.apiSecret || config.apiSecret || '';
-
-        if (!tempApiKey || !tempApiSecret) {
-          node.error('Schritt 1: apiKey und apiSecret müssen in msg.payload übergeben werden.');
+        // Schritt 1: Token von Last.fm API holen, dann Auth-URL mit Token ausgeben
+        if (!apiKey || !apiSecret) {
+          node.error('Schritt 1: apiKey und apiSecret müssen übergeben werden (in msg.payload, msg oder Node-Konfiguration).');
           return;
         }
+        tempApiKey    = apiKey;
+        tempApiSecret = apiSecret;
 
-        const authUrl = lastFmGetAuthUrl(tempApiKey);
-        node.warn(`Öffne diese URL im Browser und autorisiere die App:\n${authUrl}`);
-        node.send({ topic: 'lastfm-auth-url', payload: authUrl });
-        node.status({ fill: 'yellow', shape: 'ring', text: 'Warte auf Browser-Autorisierung...' });
+        try {
+          node.status({ fill: 'blue', shape: 'ring', text: 'Hole Token von Last.fm...' });
+          tempToken = await lastFmGetToken(tempApiKey, tempApiSecret);
+          const authUrl = lastFmBuildAuthUrl(tempApiKey, tempToken);
+          node.warn(`Öffne diese URL im Browser, autorisiere die App, dann Schritt 2 auslösen:\n${authUrl}`);
+          node.send({ topic: 'lastfm-auth-url', payload: authUrl });
+          node.status({ fill: 'yellow', shape: 'ring', text: 'Warte auf Browser-Autorisierung...' });
+        } catch (e) {
+          node.error(`Token-Abruf fehlgeschlagen: ${e.message}`);
+          node.status({ fill: 'red', shape: 'ring', text: e.message });
+        }
 
       } else if (step === 2) {
-        // Schritt 2: Token gegen Session Key tauschen
-        const token = payload.token || '';
-        if (!token) {
-          node.error('Schritt 2: token muss in msg.payload.token übergeben werden.');
+        // Schritt 2: Token (aus Schritt 1) gegen Session Key tauschen
+        // Kein manueller Token nötig — wird aus Schritt 1 übernommen
+        if (!tempToken) {
+          node.error('Schritt 2: Bitte zuerst Schritt 1 ausführen (kein Token vorhanden).');
           return;
         }
         if (!tempApiKey || !tempApiSecret) {
@@ -513,17 +551,18 @@ module.exports = function (RED) {
         }
 
         try {
-          const session = await lastFmGetSession(tempApiKey, tempApiSecret, token);
+          const session = await lastFmGetSession(tempApiKey, tempApiSecret, tempToken);
           node.warn(`Session Key erhalten! Trage diesen in den scrobbler-config Node ein:\n${session.key}`);
           node.send({ topic: 'lastfm-session', payload: session });
           node.status({ fill: 'green', shape: 'dot', text: `Session: ${session.name}` });
+          tempToken = ''; // einmalig verbraucht
         } catch (e) {
           node.error(`Fehler beim Session-Key-Abruf: ${e.message}`);
           node.status({ fill: 'red', shape: 'ring', text: e.message });
         }
 
       } else {
-        node.warn(`Unbekannter step: ${step}. Verwende step: 1 oder step: 2.`);
+        node.warn(`Unbekannter step: ${step}. Sende step: 1 oder step: 2 (als Zahl in msg.payload, payload.step oder msg.topic).`);
       }
     });
   }
