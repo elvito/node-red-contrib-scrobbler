@@ -119,7 +119,7 @@ Standard-Felder (passend für `bluesound-status`):
 |----------|-----------|---------------------------|
 | State    | `state`   | `play` / `pause` / `stop` |
 | Artist   | `artist`  | Interpret                 |
-| Title    | `title`   | Titelname                 |
+| Title    | `name`    | Titelname                 |
 | Album    | `album`   | Album                     |
 | Duration | `totlen`  | Gesamtlänge in Sekunden   |
 | Service  | `service` | Musik-Dienst (z.B. Tidal) |
@@ -150,7 +150,7 @@ Für andere Quellen können die Feldnamen im `scrobbler` Node unter **„Feld-Ma
     "ok": true,
     "track": {
       "artist": "Radiohead",
-      "title": "Creep",
+      "name": "Creep",
       "album": "Pablo Honey",
       "duration": 238,
       "timestamp": 1234567890
