@@ -150,7 +150,7 @@ Für andere Quellen können die Feldnamen im `scrobbler` Node unter **„Feld-Ma
     "ok": true,
     "track": {
       "artist": "Radiohead",
-      "name": "Creep",
+      "title": "Creep",
       "album": "Pablo Honey",
       "duration": 238,
       "timestamp": 1234567890
