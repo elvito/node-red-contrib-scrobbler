@@ -8,6 +8,8 @@ MD5-Signaturen (für Last.fm) werden über das eingebaute Node.js `crypto`-Modul
 
 > ⚠️ **Hinweis:** Dieser Node wurde mit KI-Unterstützung (Claude / Anthropic) erstellt.  
 > Er funktioniert, wird aber ohne Garantie auf Dauerhaftigkeit oder Vollständigkeit bereitgestellt.
+>
+> ℹ️ **Aktueller Status:** Der Node befindet sich nicht in aktiver Entwicklung, ich werde daran nur etwas ändern, wenn es für mich persönlich nicht mehr funktioniert. Bei dringenden Problemen/Featurewünschen etc. bitte das Repo forken und selbst beheben.
 
 ---
 
