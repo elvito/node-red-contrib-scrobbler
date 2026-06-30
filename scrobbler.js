@@ -368,23 +368,30 @@ module.exports = function (RED) {
         } catch (e) {
           node.warn(`Last.fm Now Playing: ${e.message}`);
           results.push({ service: 'lastfm', ok: false, error: e.message });
+          node.send({
+            topic:   'nowplaying',
+            service: 'lastfm',
+            payload: { type: 'nowplaying', service: 'lastfm', ok: false, track, error: e.message },
+          });
         }
       }
 
-    if (cfg.lbEnabled) {
+      if (cfg.lbEnabled) {
         try {
-          const detail = await listenBrainzSubmit(cfg.lbToken, 'single', track);
+          const detail = await listenBrainzSubmit(cfg.lbToken, 'playing_now', track);
+          results.push({ service: 'listenbrainz', ok: true, detail });
           node.send({
-            topic:   'scrobble',
+            topic:   'nowplaying',
             service: 'listenbrainz',
-            payload: { type: 'scrobble', service: 'listenbrainz', ok: true, track, detail },
+            payload: { type: 'nowplaying', service: 'listenbrainz', ok: true, track, detail },
           });
         } catch (e) {
-          node.warn(`ListenBrainz Scrobble: ${e.message}`);
+          node.warn(`ListenBrainz Now Playing: ${e.message}`);
+          results.push({ service: 'listenbrainz', ok: false, error: e.message });
           node.send({
-            topic:   'scrobble',
+            topic:   'nowplaying',
             service: 'listenbrainz',
-            payload: { type: 'scrobble', service: 'listenbrainz', ok: false, track, error: e.message },
+            payload: { type: 'nowplaying', service: 'listenbrainz', ok: false, track, error: e.message },
           });
         }
       }
@@ -407,6 +414,11 @@ module.exports = function (RED) {
           });
         } catch (e) {
           node.warn(`Last.fm Scrobble: ${e.message}`);
+          node.send({
+            topic:   'scrobble',
+            service: 'lastfm',
+            payload: { type: 'scrobble', service: 'lastfm', ok: false, track, error: e.message },
+          });
         }
       }
 
@@ -420,6 +432,11 @@ module.exports = function (RED) {
           });
         } catch (e) {
           node.warn(`ListenBrainz Scrobble: ${e.message}`);
+          node.send({
+            topic:   'scrobble',
+            service: 'listenbrainz',
+            payload: { type: 'scrobble', service: 'listenbrainz', ok: false, track, error: e.message },
+          });
         }
       }
     }
