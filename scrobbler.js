@@ -371,18 +371,21 @@ module.exports = function (RED) {
         }
       }
 
-      if (cfg.lbEnabled) {
+    if (cfg.lbEnabled) {
         try {
-          const detail = await listenBrainzSubmit(cfg.lbToken, 'playing_now', track);
-          results.push({ service: 'listenbrainz', ok: true, detail });
+          const detail = await listenBrainzSubmit(cfg.lbToken, 'single', track);
           node.send({
-            topic:   'nowplaying',
+            topic:   'scrobble',
             service: 'listenbrainz',
-            payload: { type: 'nowplaying', service: 'listenbrainz', ok: true, track, detail },
+            payload: { type: 'scrobble', service: 'listenbrainz', ok: true, track, detail },
           });
         } catch (e) {
-          node.warn(`ListenBrainz Now Playing: ${e.message}`);
-          results.push({ service: 'listenbrainz', ok: false, error: e.message });
+          node.warn(`ListenBrainz Scrobble: ${e.message}`);
+          node.send({
+            topic:   'scrobble',
+            service: 'listenbrainz',
+            payload: { type: 'scrobble', service: 'listenbrainz', ok: false, track, error: e.message },
+          });
         }
       }
 
