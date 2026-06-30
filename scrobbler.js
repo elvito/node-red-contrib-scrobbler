@@ -10,19 +10,10 @@ const { URL } = require('url');
 // Hilfsfunktionen
 // ---------------------------------------------------------------------------
 
-/**
- * MD5-Hash via Node.js built-in crypto (ersetzt externes md5-Paket).
- * utf8-Encoding ist wichtig für korrekte Signaturen bei Umlauten/Sonderzeichen.
- */
 function md5(str) {
   return crypto.createHash('md5').update(String(str), 'utf8').digest('hex');
 }
 
-/**
- * Last.fm API-Signatur gemäß https://www.last.fm/api/authspec#_8-signing-calls
- * Alle Parameter außer 'format' und 'callback' alphabetisch sortieren,
- * als key+value aneinanderhängen, secret anhängen, dann MD5.
- */
 function signLastFm(params, secret) {
   const sigStr = Object.keys(params)
     .filter(k => k !== 'format' && k !== 'callback')
@@ -32,9 +23,6 @@ function signLastFm(params, secret) {
   return md5(sigStr);
 }
 
-/**
- * Einfacher HTTP/HTTPS POST mit URL-encoded Body, gibt Promise<string> zurück.
- */
 function httpPost(urlStr, body) {
   return new Promise((resolve, reject) => {
     const u        = new URL(urlStr);
@@ -63,9 +51,6 @@ function httpPost(urlStr, body) {
   });
 }
 
-/**
- * Einfacher HTTP/HTTPS GET, gibt Promise<string> zurück.
- */
 function httpGet(urlStr) {
   return new Promise((resolve, reject) => {
     const u       = new URL(urlStr);
@@ -94,10 +79,6 @@ function httpGet(urlStr) {
 
 const LASTFM_API_URL = 'https://ws.audioscrobbler.com/2.0/';
 
-/**
- * Schritt 1a: Token von Last.fm holen (auth.getToken).
- * Dieser Token wird in die Auth-URL eingebettet und in Schritt 2 wiederverwendet.
- */
 async function lastFmGetToken(apiKey, apiSecret) {
   const params = {
     method:  'auth.getToken',
@@ -112,19 +93,13 @@ async function lastFmGetToken(apiKey, apiSecret) {
   if (json.error) {
     throw new Error(`Last.fm auth.getToken Fehler ${json.error}: ${json.message}`);
   }
-  return json.token; // ~60 Minuten gültig nach Autorisierung durch den Nutzer
+  return json.token;
 }
 
-/**
- * Schritt 1b: Auth-URL mit Token bauen.
- */
 function lastFmBuildAuthUrl(apiKey, token) {
   return `https://www.last.fm/api/auth/?api_key=${apiKey}&token=${token}`;
 }
 
-/**
- * Schritt 2: Token gegen Session Key tauschen (auth.getSession).
- */
 async function lastFmGetSession(apiKey, apiSecret, token) {
   const params = {
     method:  'auth.getSession',
@@ -140,12 +115,9 @@ async function lastFmGetSession(apiKey, apiSecret, token) {
   if (json.error) {
     throw new Error(`Last.fm auth.getSession Fehler ${json.error}: ${json.message}`);
   }
-  return json.session; // { name, key, subscriber }
+  return json.session;
 }
 
-/**
- * Now Playing an Last.fm melden (track.updateNowPlaying).
- */
 async function lastFmNowPlaying(apiKey, apiSecret, sessionKey, track) {
   const params = {
     method:   'track.updateNowPlaying',
@@ -168,9 +140,6 @@ async function lastFmNowPlaying(apiKey, apiSecret, sessionKey, track) {
   return json;
 }
 
-/**
- * Scrobble an Last.fm senden (track.scrobble).
- */
 async function lastFmScrobble(apiKey, apiSecret, sessionKey, track) {
   const params = {
     method:      'track.scrobble',
@@ -200,10 +169,6 @@ async function lastFmScrobble(apiKey, apiSecret, sessionKey, track) {
 
 const LB_API_URL = 'https://api.listenbrainz.org/1/submit-listens';
 
-/**
- * Listen an ListenBrainz senden.
- * listenType: 'playing_now' oder 'single'
- */
 async function listenBrainzSubmit(userToken, listenType, track) {
   const payload = {
     listen_type: listenType,
@@ -221,12 +186,10 @@ async function listenBrainzSubmit(userToken, listenType, track) {
     }],
   };
 
-  // Bei 'single' (echtes Scrobble) muss listened_at gesetzt sein
   if (listenType === 'single') {
     payload.payload[0].listened_at = track.timestamp || Math.floor(Date.now() / 1000);
   }
 
-  // ListenBrainz erwartet JSON per POST mit Bearer-Token
   return new Promise((resolve, reject) => {
     const body    = JSON.stringify(payload);
     const u       = new URL(LB_API_URL);
@@ -275,15 +238,11 @@ module.exports = function (RED) {
   // -------------------------------------------------------------------------
   function ScrobblerConfigNode(config) {
     RED.nodes.createNode(this, config);
-    // Last.fm
-    // Credentials via this.credentials (nicht config!) lesen
     this.lastfmApiKey     = (this.credentials && this.credentials.lastfmApiKey)     || '';
     this.lastfmApiSecret  = (this.credentials && this.credentials.lastfmApiSecret)  || '';
     this.lastfmSessionKey = (this.credentials && this.credentials.lastfmSessionKey) || '';
-    // lastfmEnabled + lbzEnabled kommen als defaults (nicht credentials) → via config
     this.lastfmEnabled = (config.lastfmEnabled === true || config.lastfmEnabled === 'true')
                          && !!(this.lastfmApiKey && this.lastfmApiSecret && this.lastfmSessionKey);
-    // ListenBrainz: Feld heißt im HTML lbzToken (mit z!)
     this.lbToken   = (this.credentials && this.credentials.lbzToken) || '';
     this.lbEnabled = (config.lbzEnabled === true || config.lbzEnabled === 'true') && !!this.lbToken;
   }
@@ -292,7 +251,7 @@ module.exports = function (RED) {
       lastfmApiKey:     { type: 'password' },
       lastfmApiSecret:  { type: 'password' },
       lastfmSessionKey: { type: 'password' },
-      lbzToken:         { type: 'password' },  // muss exakt dem HTML-Feldnamen entsprechen
+      lbzToken:         { type: 'password' },
     },
   });
 
@@ -309,7 +268,6 @@ module.exports = function (RED) {
       return;
     }
 
-    // Feld-Mapping (konfigurierbar, mit sinnvollen Defaults für bluesound)
     const F = {
       state:    config.fieldState    || 'state',
       artist:   config.fieldArtist   || 'artist',
@@ -319,8 +277,8 @@ module.exports = function (RED) {
       service:  config.fieldService  || 'service',
     };
 
-    const scrobbleDelay = (parseInt(config.scrobbleAfter,  10) || 30) * 1000; // ms (Feldname im HTML: scrobbleAfter)
-    const MIN_DURATION  = 30; // Tracks kürzer als 30s werden nicht gescrobbelt (Last.fm-Regel)
+    const scrobbleDelay = (parseInt(config.scrobbleAfter,  10) || 30) * 1000;
+    const MIN_DURATION  = 30;
 
     let currentTrack   = null;
     let scrobbleTimer  = null;
@@ -449,7 +407,6 @@ module.exports = function (RED) {
         return;
       }
 
-      // Scrobble frühestens nach 50% der Titellänge ODER nach scrobbleDelay (je nachdem was später ist)
       let delay = scrobbleDelay;
       if (track.duration > 0) {
         const halfDuration = (track.duration * 1000) / 2;
@@ -484,11 +441,9 @@ module.exports = function (RED) {
       }
 
       if (isSameTrack(track, currentTrack) && nowPlayingDone) {
-        // Gleicher Track, kein erneutes Now Playing nötig
         return;
       }
 
-      // Neuer Track
       clearScrobbleTimer();
       currentTrack   = track;
       nowPlayingDone = false;
@@ -520,28 +475,21 @@ module.exports = function (RED) {
     RED.nodes.createNode(this, config);
     const node = this;
 
-    // Temporärer Speicher zwischen Schritt 1 und 2
     let tempApiKey    = '';
     let tempApiSecret = '';
-    let tempToken     = '';   // von auth.getToken, wird in Schritt 2 wiederverwendet
+    let tempToken     = '';
 
     node.on('input', async function (msg) {
-      // step kann auf mehrere Arten reinkommen:
-      //   { step: 1, apiKey: "...", apiSecret: "..." }  ← Objekt in payload
-      //   msg.payload = 1                               ← direkte Zahl (Inject-Default)
-      //   msg.topic = "1"                               ← über Topic
       const payload = (msg.payload && typeof msg.payload === 'object') ? msg.payload : {};
       const step = parseInt(
         payload.step ?? msg.payload ?? msg.topic ?? '',
         10
       );
 
-      // apiKey/apiSecret aus payload-Objekt ODER direkt auf msg-Ebene
       const apiKey    = payload.apiKey    || msg.apiKey    || config.apiKey    || '';
       const apiSecret = payload.apiSecret || msg.apiSecret || config.apiSecret || '';
 
       if (step === 1) {
-        // Schritt 1: Token von Last.fm API holen, dann Auth-URL mit Token ausgeben
         if (!apiKey || !apiSecret) {
           node.error('Schritt 1: apiKey und apiSecret müssen übergeben werden (in msg.payload, msg oder Node-Konfiguration).');
           return;
@@ -562,8 +510,6 @@ module.exports = function (RED) {
         }
 
       } else if (step === 2) {
-        // Schritt 2: Token (aus Schritt 1) gegen Session Key tauschen
-        // Kein manueller Token nötig — wird aus Schritt 1 übernommen
         if (!tempToken) {
           node.error('Schritt 2: Bitte zuerst Schritt 1 ausführen (kein Token vorhanden).');
           return;
@@ -578,7 +524,7 @@ module.exports = function (RED) {
           node.warn(`Session Key erhalten! Trage diesen in den scrobbler-config Node ein:\n${session.key}`);
           node.send({ topic: 'lastfm-session', payload: session });
           node.status({ fill: 'green', shape: 'dot', text: `Session: ${session.name}` });
-          tempToken = ''; // einmalig verbraucht
+          tempToken = '';
         } catch (e) {
           node.error(`Fehler beim Session-Key-Abruf: ${e.message}`);
           node.status({ fill: 'red', shape: 'ring', text: e.message });
